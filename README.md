@@ -6,11 +6,15 @@ Currently works using a modified version of sapper until #356 resolves.
 
 Same code base support local dev with hot module reloading when process.env.NODE_ENV = development.
 
-Start with usual `sapper dev` in Sapper directory
+Some build warnings I haven't delved into.
+
+Note, your lambda will go cold when inactive.
+
+For local dev, start with usual `sapper dev` in Sapper directory
 
 ## Requirements.
 
-An aws account, aws cli, a TLD in Route53 and an s3 bucket for cloudformation to use temporarily.
+An aws account, aws cli, a TLD in Route53 and an s3 bucket for cloudformation to use temporarily. You will also need to use AWS Certificate manager to issue an SSL certificate for your domain.
 
 You need to host this on a custom domain because API gateway adds /Prod or /Stage to the prefix of all the methods, which would mean you need to update Sapper to respect these modified route paths.
 
@@ -28,7 +32,7 @@ $ aws cloudformation package --template-file Server.yaml --s3-bucket YOUR_S3_BUC
 $ aws cloudformation deploy --template-file deploy.yaml --stack-name SAPPER-LAMBDA --parameter-overrides PublicHostedZoneId=xxxx DomainName=xxxxx CertificateArn=xxxx --capabilities CAPABILITY_IAM
 ```
 
-There is a annoying issue, that after first time deployment, you need to go into api gateway console, and for both the resources (`/` and `/{proxy+}`) you need to:
+There is an annoying issue, that after first time deployment, you need to go into api gateway console, and for both the resources (`/` and `/{proxy+}`) you need to:
 
 1. Click on the word ANY
 2. Click the Integration Request box

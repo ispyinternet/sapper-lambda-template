@@ -1,6 +1,6 @@
 # sapper-lambda-template
 
-A cloudformation template to deploy sapper in lambda.
+Proof of concept cloudformation template to deploy sapper in lambda.
 
 Currently works using a modified version of sapper until #356 resolves.
 

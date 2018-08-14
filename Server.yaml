@@ -1,0 +1,277 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Serverless Sapper'
+Parameters:
+  PublicHostedZoneId:
+    Description: "Route53 HostedZoneId for the DomainName you are using"
+    Type: String
+    Default: ""
+  DomainName:
+    Description: "Domain name (in route53 that you want to host sapper at)"
+    Type: String
+    Default: ""
+  CertificateArn:
+    Description: "ARN of SSL Certificate for the Domain name you are using. Use AWS Certificate Manager in the same region you are deploying your lambda"
+    Type: String
+    Default: ""
+
+Resources:
+
+  # Lambda  role
+  SapperExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+      - PolicyName: SapperLambda
+        PolicyDocument:
+          Statement:
+          - Effect: 'Allow'
+            Action: 'sqs:*'
+            Resource: '*'
+          - Effect: 'Allow'
+            Action: 'logs:*'
+            Resource: 'arn:aws:logs:*:*:*'
+      Path: "/"
+
+  # API Gateway
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      EndpointConfiguration: REGIONAL
+
+      DefinitionBody: !Sub |
+        swagger: 2
+        info:
+          title: SapperLambda
+        basePath: /prod
+        schemes:
+          - https
+        paths:
+          /:
+            x-amazon-apigateway-any-method:
+              produces:
+                - application/json
+              responses:
+                '200':
+                  description: 200 response
+                  schema:
+                    $ref: '#/definitions/Empty'
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: 200
+                uri: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
+                passthroughBehavior: when_no_match
+                httpMethod: ANY
+                type: aws_proxy
+            options:
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              responses:
+                '200':
+                  description: 200 response
+                  schema:
+                    $ref: '#/definitions/Empty'
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+              x-amazon-apigateway-integration:
+                contentHandling: CONVERT_TO_TEXT
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: '''DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'''
+                      method.response.header.Access-Control-Allow-Headers: >-
+                        'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'
+                      method.response.header.Access-Control-Allow-Origin: '''https://${DomainName}'''
+                passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                type: mock
+          '/{proxy+}':
+            x-amazon-apigateway-any-method:
+              produces:
+                - application/json
+              parameters:
+                - name: proxy
+                  in: path
+                  required: true
+                  type: string
+              responses: {}
+              x-amazon-apigateway-integration:
+                uri: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
+                passthroughBehavior: when_no_match
+                httpMethod: ANY
+                type: aws_proxy
+            options:
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              responses:
+                '200':
+                  description: 200 response
+                  schema:
+                    $ref: '#/definitions/Empty'
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: '''DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'''
+                      method.response.header.Access-Control-Allow-Headers: >-
+                        'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'
+                      method.response.header.Access-Control-Allow-Origin: '''https://${DomainName}'''
+                passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                type: mock
+        x-amazon-apigateway-binary-media-types:
+          - '*/*'
+        definitions:
+          Empty:
+            type: object
+            title: Empty Schema
+
+  # The lambda functions
+
+  # Sapper Lambda function
+  LambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: deploy.handler
+      Runtime: nodejs8.10
+      Role: !GetAtt SapperExecutionRole.Arn
+      CodeUri: ./Sapper/package.zip
+      Timeout: 20
+      Events:
+        ProxyApiRoot:
+          Type: 'Api'
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: '/{proxy+}'
+            Method: 'post'
+
+      Environment:
+        Variables:
+          PASS_ENVIRONMENT_TO_SAPPER: 'if you need'
+
+  GatewayDomain:
+    Type: "AWS::ApiGateway::DomainName"
+    Properties:
+      DomainName: !Ref DomainName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: !Ref CertificateArn
+
+  BasePathMapping:
+    Type: "AWS::ApiGateway::BasePathMapping"
+    Properties:
+      DomainName: !Ref GatewayDomain
+      RestApiId: !Ref ApiGatewayApi
+      Stage: !Ref ApiGatewayApi.Stage
+
+  RegionalDomainLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Policies:
+      - PolicyName: 'GetDomainNamePolicy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'apigateway:GET'
+            Resource:
+            - "*"
+
+  # The workaround Lambda that returns the regionalDomainName property
+  RegionalDomainLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python2.7
+      Handler: index.handler
+      Role: !GetAtt RegionalDomainLambdaRole.Arn
+      Timeout: 50
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import json
+          import boto3
+
+          client = boto3.client('apigateway')
+          def handler(event, context):
+              response_data = {}
+
+              if event['RequestType'] == 'Delete' or event['RequestType'] == 'Update':
+                cfnresponse.send(event, context, cfnresponse.SUCCESS,response_data, "RegionalDomainNameString")
+
+              try:
+                  domainName = event['ResourceProperties']['DomainName']
+                  regional_domain_name = client.get_domain_name(domainName=domainName)['regionalDomainName']
+                  response_data['value'] = regional_domain_name
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS,response_data, "RegionalDomainNameString")
+              except Exception as e:
+                  response_data['exception'] = e
+                  cfnresponse.send(event, context, cfnresponse.FAILED, response_data, "RegionalDomainNameString")
+
+  # The resource that serves as a placeholder
+  RegionalDomain:
+    Type: Custom::CustomResource
+    Properties:
+      ServiceToken: !GetAtt RegionalDomainLambda.Arn
+      DomainName: !Ref DomainName
+
+  GatewayRoute53Entry:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      Name: !Ref DomainName
+      Type: A
+      HostedZoneId: !Ref PublicHostedZoneId
+      AliasTarget:
+        HostedZoneId: ZLY8HYME6SFDD
+        DNSName: !GetAtt RegionalDomain.value
+        EvaluateTargetHealth: false
+
+Outputs:
+  ApiGatewayCustomDomainUrl:
+    Value: !Ref GatewayDomain

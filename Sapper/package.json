@@ -10,7 +10,7 @@
     "cy:run": "cypress run",
     "cy:open": "cypress open",
     "test": "run-p --race dev cy:run",
-    "build-sapper": "cd node_modules/sapper && npm intall && npm run build",
+    "build-sapper": "cd node_modules/sapper && npm install && npm run build",
     "postinstall": "npm run build-sapper && npm run build && npm run package",
     "upload": "aws lambda update-function-code --zip-file fileb://package.zip --function-name",
     "package": "rm -f package.zip && zip -qr package.zip deploy.js assets build",
@@ -20,7 +20,7 @@
     "aws-serverless-express": "^3.2.0",
     "compression": "^1.7.1",
     "express": "^4.16.3",
-    "node-fetch": "^2.2.0",
+    "node-fetch": "ispyinternet/node-fetch",
     "sapper": "ispyinternet/sapper",
     "sirv": "^0.1.1"
   },
